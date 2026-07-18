@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.env
+
+# Logs
+*.log
+logs/
+
+# Cache / generated
+apps.json
+vms.json
+
+# Test reports
+*TEST_REPORT.md
+
+# OS
+.DS_Store
+Thumbs.db
