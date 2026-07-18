@@ -9,6 +9,9 @@ from datetime import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
 import time
+import logging
+import logging.handlers
+import uuid
 
 sys.path.insert(0, str(Path(__file__).parent / "venv" / "lib" / "python3.14" / "site-packages"))
 
@@ -19,6 +22,67 @@ import httpx
 import uvicorn
 
 GATEWAY = Path(__file__).parent.resolve()
+
+# ─── Structured Logging Setup ───
+LOG_DIR = GATEWAY / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+
+class JSONFormatter(logging.Formatter):
+    def format(self, record):
+        log_obj = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "module": record.module,
+            "function": record.funcName,
+            "line": record.lineno,
+        }
+        # Add request_id if present (using getattr for dynamic attribute)
+        request_id = getattr(record, 'request_id', None)
+        if request_id:
+            log_obj["request_id"] = request_id
+        if record.exc_info:
+            log_obj["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_obj)
+
+def setup_logging():
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    
+    # Clear existing handlers
+    logger.handlers.clear()
+    
+    # JSON file handler with rotation
+    json_handler = logging.handlers.RotatingFileHandler(
+        LOG_DIR / "gateway.json.log",
+        maxBytes=10_000_000,  # 10MB
+        backupCount=5
+    )
+    json_handler.setFormatter(JSONFormatter())
+    logger.addHandler(json_handler)
+    
+    # Human-readable file handler with rotation
+    human_handler = logging.handlers.RotatingFileHandler(
+        LOG_DIR / "gateway.log",
+        maxBytes=10_000_000,
+        backupCount=5
+    )
+    human_handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s [%(name)s] %(message)s'
+    ))
+    logger.addHandler(human_handler)
+    
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s %(message)s'
+    ))
+    logger.addHandler(console_handler)
+    
+    return logger
+
+logger = setup_logging()
 
 # ─── LLM Proxy Config ───
 OLLAMA_URL = "http://localhost:11434"
