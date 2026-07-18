@@ -5,8 +5,8 @@ GUI access to all apps, VMs, and system status
 Serves: http://localhost:8080
 """
 import json, os, subprocess, shutil, asyncio, signal, sys
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 sys.path.insert(0, str(Path(__file__).parent / "venv" / "lib" / "python3.14" / "site-packages"))
@@ -95,6 +95,45 @@ def get_system_status():
         try: return json.loads(status_file.read_text())
         except: pass
     return {}
+
+# ─── Health Check Routes ───
+
+@app.get("/health")
+async def health_check():
+    """Basic health check - returns 200 if service is running"""
+    return {"status": "healthy", "service": "lilith-gateway", "version": "2.0.0"}
+
+@app.get("/health/ready")
+async def readiness_check():
+    """Readiness check - verifies dependencies are available"""
+    checks = {
+        "gateway": "ok",
+        "virsh": "ok" if shutil.which("virsh") else "missing",
+        "ollama": "unknown",
+    }
+    
+    # Check Ollama connectivity
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.get(f"{OLLAMA_URL}/api/tags")
+            checks["ollama"] = "ok" if resp.status_code == 200 else "error"
+    except:
+        checks["ollama"] = "unreachable"
+    
+    # Overall readiness
+    ready = all(v in ("ok", "unknown") for v in checks.values())
+    status_code = 200 if ready else 503
+    
+    return JSONResponse(
+        content={"ready": ready, "checks": checks, "timestamp": datetime.now().isoformat()},
+        status_code=status_code
+    )
+
+@app.get("/health/live")
+async def liveness_check():
+    """Liveness check - returns 200 if process is alive"""
+    return {"alive": True, "service": "lilith-gateway", "timestamp": datetime.now().isoformat()}
 
 # ─── API Routes ───
 

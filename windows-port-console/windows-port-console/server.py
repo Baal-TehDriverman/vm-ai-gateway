@@ -16,8 +16,6 @@ import os
 import subprocess
 import tempfile
 import time
-import shutil
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -36,43 +34,6 @@ app = FastAPI(title="Windows Port Console", version="1.0.0")
 
 SHARED_DIR = Path.home() / "Desktop" / "cross-compile"
 SHARED_DIR.mkdir(exist_ok=True)
-
-# ─── Health Check Routes ───
-
-@app.get("/health")
-async def health_check():
-    """Basic health check - returns 200 if service is running"""
-    return {"status": "healthy", "service": "windows-port-console", "version": "1.0.0"}
-
-@app.get("/health/ready")
-async def readiness_check():
-    """Readiness check - verifies dependencies are available"""
-    checks = {
-        "console": "ok",
-        "virsh": "ok" if shutil.which("virsh") else "missing",
-        "libvirt": "unknown",
-    }
-    
-    # Check libvirt connectivity
-    try:
-        result = subprocess.run(["virsh", "list", "--all"], capture_output=True, timeout=3)
-        checks["libvirt"] = "ok" if result.returncode == 0 else "error"
-    except:
-        checks["libvirt"] = "unreachable"
-    
-    # Overall readiness
-    ready = all(v in ("ok", "unknown") for v in checks.values())
-    status_code = 200 if ready else 503
-    
-    return JSONResponse(
-        content={"ready": ready, "checks": checks, "timestamp": datetime.now().isoformat()},
-        status_code=status_code
-    )
-
-@app.get("/health/live")
-async def liveness_check():
-    """Liveness check - returns 200 if process is alive"""
-    return {"alive": True, "service": "windows-port-console", "timestamp": datetime.now().isoformat()}
 
 # ─── VM Management API ───────────────────────────────────────────────
 

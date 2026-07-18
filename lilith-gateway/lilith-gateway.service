@@ -1,0 +1,28 @@
+[Unit]
+Description=🜏 Lilith Gateway
+Documentation=https://github.com/Baal-TehDriverman/vm-ai-gateway
+After=network.target libvirtd.service
+Wants=libvirtd.service
+
+[Service]
+Type=simple
+User=tehlappy
+Group=tehlappy
+WorkingDirectory=/home/tehlappy/🜏 Lilith/_shared/gateway
+Environment=PATH=/home/tehlappy/🜏 Lilith/_shared/gateway/venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/tehlappy/🜏 Lilith/_shared/gateway/venv/bin/python -m uvicorn gateway_server:app --host 0.0.0.0 --port 8080
+Restart=on-failure
+RestartSec=5
+RestartPreventExitStatus=SIGTERM
+StandardOutput=append:/home/tehlappy/🜏 Lilith/_shared/gateway/gateway.log
+StandardError=append:/home/tehlappy/🜏 Lilith/_shared/gateway/gateway.log
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/tehlappy/🜏 Lilith/_shared/gateway
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target
