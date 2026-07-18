@@ -8,6 +8,7 @@ import json, os, subprocess, shutil, asyncio, signal, sys
 from datetime import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
+import time
 
 sys.path.insert(0, str(Path(__file__).parent / "venv" / "lib" / "python3.14" / "site-packages"))
 
@@ -30,11 +31,97 @@ VMS_JSON = GATEWAY / "vms.json"
 # ─── App State ───
 connected_websockets = set()
 
+# ─── Cache Helpers ───
+# Cache storage
+_apps_cache = None
+_apps_cache_time = 0
+_vms_cache = None
+_vms_cache_time = 0
+_models_cache = None
+_models_cache_time = 0
+
+CACHE_TTL = 30  # seconds
+MODELS_CACHE_TTL = 60  # seconds
+
+def load_json(path):
+    if path.exists():
+        try: return json.loads(path.read_text())
+        except: pass
+    return {}
+
+async def get_apps_cached():
+    global _apps_cache, _apps_cache_time
+    now = time.time()
+    if _apps_cache is None or (now - _apps_cache_time) > CACHE_TTL:
+        scan_apps = GATEWAY / "scan_apps.py"
+        if scan_apps.exists():
+            subprocess.run([sys.executable, str(scan_apps)], capture_output=True, timeout=30)
+        _apps_cache = load_json(APPS_JSON)
+        _apps_cache_time = now
+    return _apps_cache
+
+async def get_vms_cached():
+    global _vms_cache, _vms_cache_time
+    now = time.time()
+    if _vms_cache is None or (now - _vms_cache_time) > CACHE_TTL:
+        scan_vms = GATEWAY / "scan_vms.py"
+        if scan_vms.exists():
+            subprocess.run([sys.executable, str(scan_vms)], capture_output=True, timeout=30)
+        _vms_cache = load_json(VMS_JSON)
+        _vms_cache_time = now
+    return _vms_cache
+
+async def get_models_cached():
+    global _models_cache, _models_cache_time, llm_client
+    now = time.time()
+    if _models_cache is not None and (now - _models_cache_time) < MODELS_CACHE_TTL:
+        return _models_cache
+    
+    if llm_client:
+        try:
+            resp = await llm_client.get("/v1/models", timeout=5.0)
+            if resp.status_code == 200:
+                _models_cache = resp.json()
+                _models_cache_time = now
+                return _models_cache
+        except:
+            pass
+    return {"data": []}
+
+def invalidate_apps_cache():
+    global _apps_cache, _apps_cache_time
+    _apps_cache = None
+    _apps_cache_time = 0
+
+def invalidate_vms_cache():
+    global _vms_cache, _vms_cache_time
+    _vms_cache = None
+    _vms_cache_time = 0
+
+def refresh_inventory():
+    """Force refresh of both inventories"""
+    invalidate_apps_cache()
+    invalidate_vms_cache()
+    # Trigger async refresh
+    scan_apps = GATEWAY / "scan_apps.py"
+    scan_vms = GATEWAY / "scan_vms.py"
+    if scan_apps.exists():
+        subprocess.run([sys.executable, str(scan_apps)], capture_output=True, timeout=30)
+    if scan_vms.exists():
+        subprocess.run([sys.executable, str(scan_vms)], capture_output=True, timeout=30)
+
+def get_system_status():
+    status_file = GATEWAY.parent / "dashboard" / "status.json"
+    if status_file.exists():
+        try: return json.loads(status_file.read_text())
+        except: pass
+    return {}
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global llm_client
     llm_client = httpx.AsyncClient(base_url=OLLAMA_URL, timeout=120.0)
-    refresh_inventory()
+    # Don't refresh inventory on startup - lazy load instead
     yield
     connected_websockets.clear()
     if llm_client:
@@ -64,37 +151,8 @@ async def llm_chat(request: Request):
 
 @app.api_route("/v1/models", methods=["GET"])
 async def llm_models():
-    """List models from local Ollama."""
-    if not llm_client:
-        raise HTTPException(503, "LLM proxy not initialized")
-    try:
-        resp = await llm_client.get("/v1/models")
-        return JSONResponse(content=resp.json(), status_code=resp.status_code)
-    except Exception as e:
-        raise HTTPException(502, f"LLM proxy error: {e}")
-
-# ─── Helpers ───
-
-def refresh_inventory():
-    scan_apps = GATEWAY / "scan_apps.py"
-    scan_vms = GATEWAY / "scan_vms.py"
-    if scan_apps.exists():
-        subprocess.run([sys.executable, str(scan_apps)], capture_output=True, timeout=30)
-    if scan_vms.exists():
-        subprocess.run([sys.executable, str(scan_vms)], capture_output=True, timeout=30)
-
-def load_json(path):
-    if path.exists():
-        try: return json.loads(path.read_text())
-        except: pass
-    return {}
-
-def get_system_status():
-    status_file = GATEWAY.parent / "dashboard" / "status.json"
-    if status_file.exists():
-        try: return json.loads(status_file.read_text())
-        except: pass
-    return {}
+    """List models from local Ollama (cached)."""
+    return await get_models_cached()
 
 # ─── Health Check Routes ───
 
@@ -161,12 +219,12 @@ async def api_status():
 
 @app.get("/api/apps")
 async def list_apps():
-    data = load_json(APPS_JSON)
+    data = await get_apps_cached()
     return data
 
 @app.get("/api/apps/search/{query}")
 async def search_apps(query: str):
-    data = load_json(APPS_JSON)
+    data = await get_apps_cached()
     query = query.lower()
     results = [a for a in data.get("apps", []) if query in a.get("name", "").lower()]
     return {"apps": results, "count": len(results), "query": query}
@@ -191,7 +249,7 @@ async def launch_app(app_name: str):
 
 @app.get("/api/vms")
 async def list_vms():
-    data = load_json(VMS_JSON)
+    data = await get_vms_cached()
     try:
         result = subprocess.run(["virsh", "list", "--all"], capture_output=True, text=True, timeout=10)
         if result.returncode == 0:
@@ -253,6 +311,21 @@ async def list_categories():
                 cats[cat] = cats.get(cat, 0) + 1
     return {"categories": dict(sorted(cats.items())), "total_apps": data.get("count", 0)}
 
+# ─── Cache Management ───
+
+@app.post("/api/cache/invalidate")
+async def invalidate_cache(cache_type: str = "all"):
+    """Manually invalidate caches"""
+    if cache_type in ("all", "apps"):
+        invalidate_apps_cache()
+    if cache_type in ("all", "vms"):
+        invalidate_vms_cache()
+    if cache_type in ("all", "models"):
+        global _models_cache, _models_cache_time
+        _models_cache = None
+        _models_cache_time = 0
+    return {"status": "invalidated", "cache_type": cache_type}
+
 # ─── WebSocket ───
 
 @app.websocket("/ws")
@@ -266,8 +339,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json({"type": "pong", "timestamp": datetime.now().isoformat()})
             elif data == "refresh":
                 refresh_inventory()
-                apps = load_json(APPS_JSON)
-                vms = load_json(VMS_JSON)
+                apps = await get_apps_cached()
+                vms = await get_vms_cached()
                 await websocket.send_json({"type": "inventory", "apps": apps.get("count", 0), "vms": vms.get("count", 0)})
     except WebSocketDisconnect:
         pass
