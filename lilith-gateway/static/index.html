@@ -493,14 +493,61 @@ function escHtml(s) {
 }
 
 // ─── WebSocket ───
+let ws = null;
+let wsReconnectAttempts = 0;
+const WS_MAX_RECONNECT_ATTEMPTS = 10;
+const WS_RECONNECT_BASE_DELAY = 1000;
+let wsHeartbeatInterval = null;
+
 function connectWS() {
+  if (wsReconnectAttempts >= WS_MAX_RECONNECT_ATTEMPTS) {
+    console.error('Max WebSocket reconnect attempts reached');
+    toast('WebSocket connection failed - max retries reached', 'error');
+    return;
+  }
+
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(proto + '//' + location.host + '/ws');
-  ws.onmessage = (e) => {
-    try { const d = JSON.parse(e.data); if (d.type === 'inventory') toast('Inventory: ' + d.apps + ' apps, ' + d.vms + ' VMs', '#ffd93d'); } catch {}
+  
+  ws.onopen = () => {
+    console.log('WebSocket connected');
+    wsReconnectAttempts = 0;
+    // Start heartbeat
+    if (wsHeartbeatInterval) clearInterval(wsHeartbeatInterval);
+    wsHeartbeatInterval = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send('ping');
+      }
+    }, 30000); // Send ping every 30 seconds
   };
-  ws.onclose = () => setTimeout(connectWS, 5000);
-  ws.onerror = () => ws.close();
+  
+  ws.onmessage = (e) => {
+    try { 
+      const d = JSON.parse(e.data); 
+      if (d.type === 'inventory') toast('Inventory: ' + d.apps + ' apps, ' + d.vms + ' VMs', '#ffd93d'); 
+      if (d.type === 'pong') {
+        // Heartbeat response received
+        console.debug('WebSocket pong received');
+      }
+    } catch {}
+  };
+  
+  ws.onclose = (e) => {
+    console.log('WebSocket closed:', e.code, e.reason);
+    if (wsHeartbeatInterval) {
+      clearInterval(wsHeartbeatInterval);
+      wsHeartbeatInterval = null;
+    }
+    wsReconnectAttempts++;
+    const delay = Math.min(WS_RECONNECT_BASE_DELAY * Math.pow(2, wsReconnectAttempts - 1), 30000);
+    console.log(`Reconnecting in ${delay}ms (attempt ${wsReconnectAttempts}/${WS_MAX_RECONNECT_ATTEMPTS})`);
+    setTimeout(connectWS, delay);
+  };
+  
+  ws.onerror = (err) => {
+    console.error('WebSocket error:', err);
+    // Don't call ws.close() here - onclose will handle reconnection
+  };
 }
 
 // ─── Init ───

@@ -360,20 +360,10 @@ const terminalPrompt = document.getElementById('terminal-prompt');
 const terminalMode = document.getElementById('terminal-mode');
 
 let terminalWs = null;
-let terminalWsReconnectAttempts = 0;
-const TERMINAL_WS_MAX_RECONNECT = 10;
-const TERMINAL_WS_RECONNECT_BASE = 1000;
-let terminalHeartbeatInterval = null;
 let commandHistory = [];
 let historyIndex = -1;
 
 function connectTerminal() {
-  if (terminalWsReconnectAttempts >= TERMINAL_WS_MAX_RECONNECT) {
-    console.error('Max terminal WebSocket reconnect attempts reached');
-    terminalOutput.textContent += '\n[Terminal connection failed - max retries reached]\n';
-    return;
-  }
-
   if (terminalWs) {
     terminalWs.close();
   }
@@ -381,18 +371,6 @@ function connectTerminal() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}/ws/terminal`;
   terminalWs = new WebSocket(wsUrl);
-
-  terminalWs.onopen = () => {
-    console.log('Terminal WebSocket connected');
-    terminalWsReconnectAttempts = 0;
-    // Start heartbeat
-    if (terminalHeartbeatInterval) clearInterval(terminalHeartbeatInterval);
-    terminalHeartbeatInterval = setInterval(() => {
-      if (terminalWs && terminalWs.readyState === WebSocket.OPEN) {
-        terminalWs.send(JSON.stringify({ type: 'ping' }));
-      }
-    }, 30000);
-  };
 
   terminalWs.onmessage = (event) => {
     const msg = JSON.parse(event.data);
@@ -404,30 +382,17 @@ function connectTerminal() {
       if (!msg.data.endsWith('\n')) terminalOutput.textContent += '\n';
       terminalPrompt.textContent = `${getUser()}@host:~$ `;
       terminalOutput.scrollTop = terminalOutput.scrollHeight;
-    } else if (msg.type === 'pong') {
-      // Heartbeat response
-      console.debug('Terminal WebSocket pong received');
     }
   };
 
-  terminalWs.onclose = (e) => {
-    console.log('Terminal WebSocket closed:', e.code, e.reason);
-    if (terminalHeartbeatInterval) {
-      clearInterval(terminalHeartbeatInterval);
-      terminalHeartbeatInterval = null;
-    }
+  terminalWs.onclose = () => {
     terminalOutput.textContent += '\n[Terminal disconnected]\n';
     terminalWs = null;
-    terminalWsReconnectAttempts++;
-    const delay = Math.min(TERMINAL_WS_RECONNECT_BASE * Math.pow(2, terminalWsReconnectAttempts - 1), 30000);
-    console.log(`Reconnecting terminal in ${delay}ms (attempt ${terminalWsReconnectAttempts}/${TERMINAL_WS_MAX_RECONNECT})`);
-    setTimeout(connectTerminal, delay);
   };
 
-  terminalWs.onerror = (err) => {
-    console.error('Terminal WebSocket error:', err);
+  terminalWs.onerror = () => {
     terminalOutput.textContent += '\n[Terminal error — reconnecting...]\n';
-    // Don't close - onclose will handle reconnection
+    setTimeout(connectTerminal, 3000);
   };
 }
 

@@ -7,7 +7,7 @@ and porting software between Windows and Linux via remote compilation.
 
 Usage:
   python3 server.py
-  # Opens at http://localhost:8081
+  # Opens at http://localhost:8080
 """
 
 import asyncio
@@ -16,8 +16,6 @@ import os
 import subprocess
 import tempfile
 import time
-import shutil
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -37,91 +35,26 @@ app = FastAPI(title="Windows Port Console", version="1.0.0")
 SHARED_DIR = Path.home() / "Desktop" / "cross-compile"
 SHARED_DIR.mkdir(exist_ok=True)
 
-# ─── Cache Helpers ───
-_vm_status_cache = None
-_vm_status_cache_time = 0
-ISO_INFO_CACHE = None
-ISO_INFO_CACHE_TIME = 0
-CACHE_TTL = 10  # seconds
-
-async def get_vm_status_cached():
-    global _vm_status_cache, _vm_status_cache_time
-    now = time.time()
-    if _vm_status_cache is None or (now - _vm_status_cache_time) > CACHE_TTL:
-        _vm_status_cache = await get_status()
-        _vm_status_cache_time = now
-    return _vm_status_cache
-
-async def get_iso_info_cached():
-    global ISO_INFO_CACHE, ISO_INFO_CACHE_TIME
-    now = time.time()
-    if ISO_INFO_CACHE is None or (now - ISO_INFO_CACHE_TIME) > CACHE_TTL:
-        ISO_INFO_CACHE = await get_iso_info()
-        ISO_INFO_CACHE_TIME = now
-    return ISO_INFO_CACHE
-
-# ─── Health Check Routes ───
-
-@app.get("/health")
-async def health_check():
-    """Basic health check - returns 200 if service is running"""
-    return {"status": "healthy", "service": "windows-port-console", "version": "1.0.0"}
-
-@app.get("/health/ready")
-async def readiness_check():
-    """Readiness check - verifies dependencies are available"""
-    checks = {
-        "console": "ok",
-        "virsh": "ok" if shutil.which("virsh") else "missing",
-        "libvirt": "unknown",
-    }
-    
-    # Check libvirt connectivity
-    try:
-        result = subprocess.run(["virsh", "list", "--all"], capture_output=True, timeout=3)
-        checks["libvirt"] = "ok" if result.returncode == 0 else "error"
-    except:
-        checks["libvirt"] = "unreachable"
-    
-    # Overall readiness
-    ready = all(v in ("ok", "unknown") for v in checks.values())
-    status_code = 200 if ready else 503
-    
-    return JSONResponse(
-        content={"ready": ready, "checks": checks, "timestamp": datetime.now().isoformat()},
-        status_code=status_code
-    )
-
-@app.get("/health/live")
-async def liveness_check():
-    """Liveness check - returns 200 if process is alive"""
-    return {"alive": True, "service": "windows-port-console", "timestamp": datetime.now().isoformat()}
-
 # ─── VM Management API ───────────────────────────────────────────────
+
 
 @app.get("/api/vm/status")
 async def api_vm_status():
-    status = await get_vm_status_cached()
-    iso = await get_iso_info_cached()
+    status = await get_status()
+    iso = await get_iso_info()
     status["iso"] = iso
     return status
 
+
 @app.post("/api/vm/start")
 async def api_vm_start(headless: bool = Query(True)):
-    result = await start_vm(headless=headless)
-    # Invalidate cache on state change
-    global _vm_status_cache, _vm_status_cache_time
-    _vm_status_cache = None
-    _vm_status_cache_time = 0
-    return result
+    return await start_vm(headless=headless)
+
 
 @app.post("/api/vm/stop")
 async def api_vm_stop(force: bool = Query(False)):
-    result = await stop_vm(force=force)
-    global _vm_status_cache, _vm_status_cache_time
-    _vm_status_cache = None
-    _vm_status_cache_time = 0
-    return result
+    return await stop_vm(force=force)
+
 
 @app.post("/api/vm/screenshot")
 async def api_vm_screenshot():
@@ -130,15 +63,18 @@ async def api_vm_screenshot():
         return FileResponse(result["path"], media_type="image/png")
     return JSONResponse(status_code=503, content=result)
 
+
 @app.post("/api/vm/create")
 async def api_vm_create():
     return await create_vm()
 
+
 @app.get("/api/vm/iso")
 async def api_vm_iso():
-    return await get_iso_info_cached()
+    return await get_iso_info()
 
 # ─── WinRM / PowerShell API ─────────────────────────────────────────
+
 
 @app.post("/api/winrm/execute")
 async def api_winrm_execute(
@@ -151,6 +87,7 @@ async def api_winrm_execute(
     result = await execute_powershell(command, host, port, username, password)
     return result
 
+
 @app.post("/api/winrm/check")
 async def api_winrm_check(
     username: str = Form(""),
@@ -158,11 +95,13 @@ async def api_winrm_check(
 ):
     return await check_connection(username, password)
 
+
 @app.get("/api/winrm/setup-guide")
 async def api_winrm_guide():
     return {"guide": get_winrm_setup_instructions()}
 
 # ─── File Transfer API ────────────────────────────────────────────────
+
 
 @app.get("/api/files/list")
 async def api_files_list(path: str = "."):
@@ -184,6 +123,7 @@ async def api_files_list(path: str = "."):
         })
     return {"files": files, "current_path": path}
 
+
 @app.post("/api/files/upload")
 async def api_files_upload(file: UploadFile = File(...), path: str = Form(".")):
     """Upload a file to the shared directory."""
@@ -203,6 +143,7 @@ async def api_files_upload(file: UploadFile = File(...), path: str = Form(".")):
         "path": str(target_file.relative_to(SHARED_DIR)),
     }
 
+
 @app.get("/api/files/download")
 async def api_files_download(path: str = Query(...)):
     """Download a file from the shared directory."""
@@ -213,6 +154,7 @@ async def api_files_download(path: str = Query(...)):
         return {"error": "File not found"}
     return FileResponse(str(target))
 
+
 @app.post("/api/files/delete")
 async def api_files_delete(path: str = Form(...)):
     """Delete a file or directory in the shared directory."""
@@ -222,10 +164,12 @@ async def api_files_delete(path: str = Form(...)):
     if target.is_file():
         target.unlink()
     elif target.is_dir():
+        import shutil
         shutil.rmtree(str(target))
     else:
         return {"error": "Not found"}
     return {"success": True}
+
 
 @app.post("/api/files/write")
 async def api_files_write(path: str = Form(...), content: str = Form(...)):
@@ -236,6 +180,7 @@ async def api_files_write(path: str = Form(...), content: str = Form(...)):
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content)
     return {"success": True, "path": path, "size": len(content)}
+
 
 @app.get("/api/files/read")
 async def api_files_read(path: str = Query(...)):
@@ -249,6 +194,7 @@ async def api_files_read(path: str = Query(...)):
     return {"content": content, "path": path}
 
 # ─── AI Assistance API ────────────────────────────────────────────────
+
 
 @app.post("/api/ai/port")
 async def api_ai_port(request: dict):
@@ -267,6 +213,7 @@ async def api_ai_port(request: dict):
     # Basic heuristic-based porting analysis
     analysis = analyze_port(source_code, source_lang, target_lang)
     return analysis
+
 
 def analyze_port(code: str, source_lang: str, target_lang: str) -> dict:
     """Analyze code for porting between Windows and Linux."""
@@ -292,7 +239,7 @@ def analyze_port(code: str, source_lang: str, target_lang: str) -> dict:
         r"(?i)LPCSTR|LPWSTR|LPTSTR|LPCWSTR": "Windows string types — use standard C types on Linux",
         r"(?i)HANDLE": "Windows HANDLE — use int fd on Linux",
         r"(?i)DWORD|LONG|UINT|BOOL": "Windows typedefs — define equivalents or use stdint.h",
-        r"(?i)\r\n": "Windows CRLF line endings — use LF on Linux",
+        r"(?i)\\r\\n": "Windows CRLF line endings — use LF on Linux",
         r"(?i)Sleep\s*\(": "Windows Sleep(milliseconds) — use usleep() or nanosleep() on Linux",
         r"(?i)GetSystemInfo|GetComputerName|GetVersion": "Windows system info — use uname()/sysinfo()",
         r"(?i)WSADATA|WSAStartup|WSACleanup": "Winsock startup — not needed on Linux",
@@ -386,6 +333,7 @@ def analyze_port(code: str, source_lang: str, target_lang: str) -> dict:
 
 # ─── WebSocket Terminal ──────────────────────────────────────────────
 
+
 @app.websocket("/ws/terminal")
 async def websocket_terminal(websocket: WebSocket):
     """WebSocket-based terminal for executing commands on the host."""
@@ -397,24 +345,8 @@ async def websocket_terminal(websocket: WebSocket):
     }))
 
     process = None
-    heartbeat_task = None
-
-    async def heartbeat():
-        """Send periodic ping to keep connection alive"""
-        try:
-            while True:
-                await asyncio.sleep(30)
-                if websocket.client_state.name == "CONNECTED":
-                    await websocket.send_text(json.dumps({"type": "ping"}))
-                else:
-                    break
-        except:
-            pass
 
     try:
-        # Start heartbeat
-        heartbeat_task = asyncio.create_task(heartbeat())
-        
         while True:
             data = await websocket.receive_text()
             msg = json.loads(data)
@@ -459,34 +391,32 @@ async def websocket_terminal(websocket: WebSocket):
                         "data": f"Error: {e}",
                     }))
 
-            elif msg.get("type") == "pong":
-                # Heartbeat response - connection is alive
-                pass
-
     except WebSocketDisconnect:
         pass
     finally:
-        if heartbeat_task:
-            heartbeat_task.cancel()
         if process:
             process.terminate()
 
 # ─── Serve Frontend ──────────────────────────────────────────────────
+
 
 @app.get("/")
 async def index():
     html = Path(__file__).parent / "static" / "index.html"
     return HTMLResponse(html.read_text(encoding="utf-8"))
 
+
 @app.get("/app.js")
 async def app_js():
     js = Path(__file__).parent / "static" / "app.js"
     return HTMLResponse(js.read_text(encoding="utf-8"), media_type="application/javascript")
 
+
 @app.get("/style.css")
 async def style_css():
     css = Path(__file__).parent / "static" / "style.css"
     return HTMLResponse(css.read_text(encoding="utf-8"), media_type="text/css")
+
 
 # ─── Main ─────────────────────────────────────────────────────────────
 

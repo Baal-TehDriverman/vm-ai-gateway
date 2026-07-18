@@ -332,11 +332,31 @@ async def invalidate_cache(cache_type: str = "all"):
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     connected_websockets.add(websocket)
+    heartbeat_task = None
+    
+    async def heartbeat():
+        """Send periodic ping to keep connection alive"""
+        try:
+            while True:
+                await asyncio.sleep(30)
+                if websocket.client_state.name == "CONNECTED":
+                    await websocket.send_json({"type": "ping", "timestamp": datetime.now().isoformat()})
+                else:
+                    break
+        except:
+            pass
+
     try:
+        # Start heartbeat
+        heartbeat_task = asyncio.create_task(heartbeat())
+        
         while True:
             data = await websocket.receive_text()
             if data == "ping":
                 await websocket.send_json({"type": "pong", "timestamp": datetime.now().isoformat()})
+            elif data == "pong":
+                # Heartbeat response from client
+                pass
             elif data == "refresh":
                 refresh_inventory()
                 apps = await get_apps_cached()
@@ -345,6 +365,8 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
+        if heartbeat_task:
+            heartbeat_task.cancel()
         connected_websockets.discard(websocket)
 
 # ─── Frontend ───
