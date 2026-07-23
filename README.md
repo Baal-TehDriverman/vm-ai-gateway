@@ -6,6 +6,7 @@ Public repository for the **Lilith Gateway** (port 8080) and **Windows Port Cons
 
 | Dashboard | Port | Purpose |
 |-----------|------|---------|
+| **🪷 Unified Dashboard** | 3000 | React/Express SPA — full system overview, GitHub explorer, engine build, CP2077 mod dashboard, Kairos dreams, MSN knowledge graph |
 | **🜏 Lilith Gateway** | 8080 | Central control plane — apps, VMs, system status, LLM proxy |
 | **🖥️ Windows Port Console** | 8081 | Windows 11 VM management, cross-compile dashboard, WinRM/PowerShell bridge |
 
@@ -150,17 +151,37 @@ vm-ai-gateway/
 │   │   ├── app.js
 │   │   └── style.css
 │   └── templates/               # Jinja2 templates
-└── windows-port-console/        # Windows Port Console (port 8081)
-    ├── server.py                # FastAPI server
-    ├── vm_manager.py            # libvirt VM operations
-    ├── winrm_client.py          # WinRM/PowerShell client
-    ├── requirements.txt
-    ├── start.sh
-    ├── static/
-    │   ├── index.html
-    │   ├── app.js
-    │   └── style.css
-    └── venv/                    # Python virtualenv
+├── windows-port-console/        # Windows Port Console (port 8081)
+│   ├── server.py                # FastAPI server
+│   ├── vm_manager.py            # libvirt VM operations
+│   ├── winrm_client.py          # WinRM/PowerShell client
+│   ├── requirements.txt
+│   ├── start.sh
+│   ├── static/
+│   │   ├── index.html
+│   │   ├── app.js
+│   │   └── style.css
+│   └── venv/                    # Python virtualenv
+└── unified-dashboard/           # 🪷 Lilith Unified Dashboard (port 3000)
+    ├── server/index.ts          # Express API server
+    ├── src/                     # React + TypeScript frontend
+    │   ├── App.tsx              # Main app with 7 tabs
+    │   ├── components/          # React components
+    │   │   ├── DashboardOverview.tsx
+    │   │   ├── Header.tsx
+    │   │   ├── LilithGatewaySection.tsx
+    │   │   ├── BlackSpaceEngineSection.tsx
+    │   │   ├── CyberpunkModSection.tsx
+    │   │   ├── KairosDreamSection.tsx
+    │   │   ├── KnowledgeGraphSection.tsx
+    │   │   ├── GitHubProfileSection.tsx
+    │   │   └── ...
+    │   ├── hooks/               # React hooks (system, github, engine, dreams)
+    │   ├── api.ts               # API client
+    │   └── types.ts             # TypeScript types
+    ├── vite.config.ts            # Vite build config
+    ├── package.json
+    └── index.html
 ```
 
 ## Dependencies

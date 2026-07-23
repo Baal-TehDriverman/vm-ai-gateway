@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Lilith Unified Dashboard
+Comment=Unified Developer Dashboard - Lilith Gateway + GitHub Intelligence + Kairos Dream
+Exec=bash -c 'cd /home/tehlappy/Projects/UnifiedDashboard && ./start.sh'
+Icon=/home/tehlappy/Projects/UnifiedDashboard/public/icon.png
+Terminal=true
+Categories=Development;IDE;
+StartupNotify=true

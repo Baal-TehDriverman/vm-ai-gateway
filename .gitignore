@@ -20,3 +20,15 @@ vms.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Node.js
+node_modules/
+dist/
+.cache/
+server.js
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

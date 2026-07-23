@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Lilith Gateway
+Comment=Lilith Gateway Control Plane - Apps, VMs, LLM Proxy
+Exec=bash -c 'cd /home/tehlappy/Projects/Dev Console/vm-ai-gateway/lilith-gateway && python3 gateway_server.py'
+Icon=/home/tehlappy/Projects/Dev Console/vm-ai-gateway/lilith-gateway/static/icon.png
+Terminal=true
+Categories=System;Network;
+StartupNotify=true

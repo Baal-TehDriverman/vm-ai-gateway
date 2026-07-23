@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=MSN Cyberpunk Mod Deploy
+Comment=Deploy Grand Theft Cyberpunk MSN Integration mod
+Exec=bash -c 'cd /home/tehlappy/Projects/Dev Console/vm-ai-gateway/lilith-gateway && python3 -c "import asyncio; from engine_integration import run_build; asyncio.run(run_build())"'
+Icon=/home/tehlappy/Projects/UnifiedDashboard/public/cyberpunk-icon.png
+Terminal=true
+Categories=Game;Development;
+StartupNotify=true

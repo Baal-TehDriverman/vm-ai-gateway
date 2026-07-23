@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kairos Dream Scheduler
+Comment=Run Kairos Dream Cycle for Zelda Engine session
+Exec=bash -c 'cd /home/tehlappy/Projects/Dev Console && python3 kairos_clean.py --session zelda-engine --once'
+Icon=/home/tehlappy/Projects/UnifiedDashboard/public/dream-icon.png
+Terminal=true
+Categories=Development;Utility;
+StartupNotify=false

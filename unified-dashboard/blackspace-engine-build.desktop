@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=BlackSpace Engine Build
+Comment=Build BlackSpace Zelda OOT Engine
+Exec=bash -c 'cd /home/tehlappy/Desktop/Zelda/ZELDA BLACKENGINE OCT REMASTER/black-engine-zelda-oot && cmake -B build -DCMAKE_BUILD_TYPE=Debug && cmake --build build -j$(nproc)'
+Icon=/home/tehlappy/Projects/UnifiedDashboard/public/engine-icon.png
+Terminal=true
+Categories=Development;Building;
+StartupNotify=true

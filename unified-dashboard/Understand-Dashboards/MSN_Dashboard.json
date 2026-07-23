@@ -1,0 +1,12 @@
+{
+ "title": "MSN Integration Knowledge Graph",
+ "generated": "2026-07-18T05:15:00+00:00",
+ "nodes": [
+ {"id": "init.lua", "role": "entrypoint", "links": ["api.cognito", "api.campaign"]},
+ {"id": "api.cognito.perception", "role": "runtime", "links": ["NVIDIA.Gratitude.Retraining", "DLSS"]}
+ ],
+ "edges": [
+ {"from": "init.lua", "to": "api.cognito.perception", "type": "inline"},
+ {"from": "api.cognito.perception", "to": "NVIDIA.Gratitude.Retraining", "type": "bridge"}
+ ]
+}
