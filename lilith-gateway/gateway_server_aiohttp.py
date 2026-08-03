@@ -358,6 +358,14 @@ async def init_app():
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/', dashboard)
     app.router.add_get('/api/docs', api_docs)
+
+    # Abyssal Assets edge integration (NSSP mesh app)
+    try:
+        from abyssal_nssp_edge import register_abyssal_routes
+        register_abyssal_routes(app)
+        print("🜏 Abyssal Assets edge routes mounted (/api/abyssal/*)")
+    except Exception as e:
+        print(f"⚠ Abyssal edge routes NOT mounted: {e}")
     
     # Static files
     if STATIC.exists():
